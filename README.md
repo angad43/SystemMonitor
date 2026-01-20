@@ -43,5 +43,6 @@ This project is as a learning experience to master several core concepts:
 ## Examples
 ### CPU
 <img width="984" height="785" alt="Screenshot2026-01-20 12-40-22" src="https://github.com/user-attachments/assets/3c368913-46ce-4aac-a868-4081829ecc48" />
+
 ### Memory
 <img width="988" height="787" alt="Screenshot2026-01-20 20-50-45" src="https://github.com/user-attachments/assets/392d9cc4-6a51-40fe-a4a2-7f056f334a86" />

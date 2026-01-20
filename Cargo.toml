@@ -1,0 +1,17 @@
+[package]
+name = "sysmonit"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+slint = "1.14.1"
+sysinfo = "0.30"
+
+[build-dependencies]
+slint-build = "1.14.1"
+
+[profile.release]
+strip = true
+opt-level = "z"
+lto = true
+codegen-units = 1

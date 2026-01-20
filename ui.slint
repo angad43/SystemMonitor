@@ -1,0 +1,245 @@
+import { Button, VerticalBox, ScrollView } from "std-widgets.slint";
+component StatLabel inherits Text {
+    color: #8b9bb4;
+    font-size: 14px;
+}
+
+component StatValue inherits Text {
+    color: #60a5fa;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+export component AppWindow inherits Window {
+    width: 1000px;
+    height: 800px;
+    title: "System Monitor Pro";
+    background: #030712;
+
+    property <string> active_page: "cpu";
+    in property <string> processor_name: "Loading...";
+    in property <string> cpu_usage: "0%";
+    in property <string> cpu_freq: "0.00 GHz";
+    in property <string> base_speed: "0.00 GHz";
+    in property <string> max_speed: "5.0 GHz";
+    in property <string> uptime: "00:00:00";
+    in property <int> processes: 0;
+    in property <int> cpu_cores: 0;
+    in property <int> threads: 0;
+    in property <string> usage_line_data: "";
+    in property <string> usage_fill_data: "";
+
+    HorizontalLayout {
+        Rectangle {
+            width: 120px;
+            background: #101828;
+            border-color: #1e2939;
+            border-width: 1px;
+            VerticalLayout {
+                padding: 15px;
+                spacing: 15px;
+                alignment: start;
+                Rectangle {
+                    height: 50px;
+                    border-radius: 8px;
+                    background: root.active_page == "cpu" ? #3b82f6 : transparent;
+                    Text {
+                        text: "CPU";
+                        color: #ffffff;
+                        font-weight: 700;
+                        horizontal-alignment: center;
+                    }
+
+                    TouchArea {
+                        clicked => {
+                            root.active_page = "cpu";
+                        }
+                    }
+                }
+
+                Rectangle {
+                    height: 50px;
+                    border-radius: 8px;
+                    background: root.active_page == "memory" ? #3b82f6 : transparent;
+                    Text {
+                        text: "Memory";
+                        color: #ffffff;
+                        font-weight: 700;
+                        horizontal-alignment: center;
+                    }
+
+                    TouchArea {
+                        clicked => {
+                            root.active_page = "memory";
+                        }
+                    }
+                }
+            }
+        }
+
+        Rectangle {
+            if (root.active_page == "cpu"): VerticalLayout {
+                padding: 40px;
+                spacing: 25px;
+
+                Text {
+                    text: "CPU Performance";
+                    color: #ffffff;
+                    font-size: 28px;
+                    font-weight: 700;
+                }
+
+                Text {
+                    text: root.processor_name;
+                    color: #7aa2f7;
+                    font-size: 18px;
+                }
+
+                Rectangle {
+                    height: 300px;
+                    background: #111827;
+                    border-radius: 8px;
+                    clip: true;
+                    for label[i] in ["100", "75", "50", "25", "0"]: Text {
+                        x: 10px;
+                        y: i == 0 ? 5px : (i == 4 ? parent.height - 27px : (parent.height / 4) * i - 10px);
+                        text: label;
+                        color: #4b5563;
+                        font-size: 11px;
+                        vertical-alignment: center;
+                    }
+
+                    Rectangle {
+                        x: 35px;
+                        width: parent.width - 35px;
+                        height: parent.height;
+                        clip: true;
+                        Path {
+                            width: 100%;
+                            height: 100%;
+                            viewbox-width: 765;
+                            viewbox-height: 300;
+                            fill: @linear-gradient(180deg, #3b82f644 0%, #3b82f600 100%);
+                            commands: root.usage_fill_data;
+                        }
+
+                        Path {
+                            width: 100%;
+                            height: 100%;
+                            viewbox-width: 765;
+                            viewbox-height: 300;
+                            stroke: #3b82f6;
+                            stroke-width: 2px;
+                            fill: transparent;
+                            commands: root.usage_line_data;
+                        }
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 30px;
+                    VerticalLayout {
+                        spacing: 20px;
+                        width: 220px;
+                        VerticalLayout {
+                            StatLabel {
+                                text: "Current Speed";
+                            }
+
+                            StatValue {
+                                text: root.cpu_freq;
+                                font-size: 22px;
+                            }
+                        }
+
+                        VerticalLayout {
+                            StatLabel {
+                                text: "Processes";
+                            }
+
+                            StatValue {
+                                text: root.processes;
+                                font-size: 22px;
+                            }
+                        }
+
+                        VerticalLayout {
+                            StatLabel {
+                                text: "Uptime";
+                            }
+
+                            StatValue {
+                                text: root.uptime;
+                                font-size: 22px;
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        width: 1px;
+                        background: #1e2939;
+                    }
+
+                    VerticalLayout {
+                        spacing: 12px;
+                        alignment: center;
+                        HorizontalLayout {
+                            StatLabel {
+                                text: "Usage";
+                                width: 120px;
+                            }
+
+                            StatValue {
+                                text: root.cpu_usage;
+                            }
+                        }
+
+                        HorizontalLayout {
+                            StatLabel {
+                                text: "Cores";
+                                width: 120px;
+                            }
+
+                            StatValue {
+                                text: root.cpu_cores;
+                            }
+                        }
+
+                        HorizontalLayout {
+                            StatLabel {
+                                text: "Threads";
+                                width: 120px;
+                            }
+
+                            StatValue {
+                                text: root.threads;
+                            }
+                        }
+
+                        HorizontalLayout {
+                            StatLabel {
+                                text: "Base Speed";
+                                width: 120px;
+                            }
+
+                            StatValue {
+                                text: root.base_speed;
+                            }
+                        }
+
+                        HorizontalLayout {
+                            StatLabel {
+                                text: "Max Speed";
+                                width: 120px;
+                            }
+
+                            StatValue {
+                                text: root.max_speed;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

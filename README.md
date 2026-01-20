@@ -39,3 +39,6 @@ This project is as a learning experience to master several core concepts:
    cargo run --release
    ```
 
+
+##Examples
+<img width="984" height="785" alt="Screenshot2026-01-20 12-40-22" src="https://github.com/user-attachments/assets/3c368913-46ce-4aac-a868-4081829ecc48" />

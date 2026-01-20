@@ -33,11 +33,10 @@ This project is as a learning experience to master several core concepts:
 1. Clone the repository:
    ```bash
    git clone https://github.com/angad43/SystemMonitor
-   cd SystemMonitor   ```
+   cd SystemMonitor
 2. Build and run:
    ```bash
    cargo run --release
-   ```
 
 
 ## Examples

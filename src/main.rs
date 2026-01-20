@@ -1,7 +1,8 @@
 slint::include_modules!();
+
 use slint::{Model, VecModel};
 use std::rc::Rc;
-use sysinfo::{CpuRefreshKind, ProcessRefreshKind, RefreshKind, System};
+use sysinfo::{Components, CpuRefreshKind, MemoryRefreshKind, ProcessRefreshKind, System};
 
 fn generate_svg_paths(history: &[f32]) -> (String, String) {
     if history.len() < 2 {
@@ -22,30 +23,25 @@ fn generate_svg_paths(history: &[f32]) -> (String, String) {
 
     (line, fill)
 }
+
 fn main() -> Result<(), slint::PlatformError> {
     let ui = AppWindow::new()?;
     let ui_handle = ui.as_weak();
 
-    let mut sys = System::new_with_specifics(
-        RefreshKind::new()
-            .with_cpu(CpuRefreshKind::everything())
-            .with_processes(ProcessRefreshKind::new()),
-    );
+    let mut sys = System::new_all();
+    let mut components = Components::new_with_refreshed_list();
 
     sys.refresh_cpu();
-    let usage_history = Rc::new(VecModel::<f32>::from(vec![0.0; 100]));
-    if let Some(cpu) = sys.cpus().first() {
-        let brand = cpu.brand().trim();
-        ui.set_processor_name(brand.into());
-        let base_speed = if let Some(pos) = brand.find("GHz") {
-            let start = brand[..pos].rfind(' ').map(|i| i + 1).unwrap_or(0);
-            format!("{} GHz", brand[start..pos].trim())
-        } else {
-            format!("{:.2} GHz", cpu.frequency() as f32 / 1000.0)
-        };
-        ui.set_base_speed(base_speed.into());
-    }
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    sys.refresh_cpu();
 
+    let cpu_history = Rc::new(VecModel::<f32>::from(vec![0.0; 100]));
+    let mem_history = Rc::new(VecModel::<f32>::from(vec![0.0; 100]));
+
+    if let Some(cpu) = sys.cpus().first() {
+        ui.set_processor_name(cpu.brand().trim().into());
+        ui.set_base_speed(format!("{:.2} GHz", cpu.frequency() as f32 / 1000.0).into());
+    }
     ui.set_cpu_cores(sys.physical_core_count().unwrap_or(0) as i32);
     ui.set_threads(sys.cpus().len() as i32);
     ui.set_max_speed("5.0 GHz".into());
@@ -60,23 +56,87 @@ fn main() -> Result<(), slint::PlatformError> {
                 None => return,
             };
 
-            sys.refresh_cpu();
-            sys.refresh_processes();
-            let mut freq = sys.global_cpu_info().frequency();
-            if freq == 0 {
-                freq = sys.cpus().first().map(|c| c.frequency()).unwrap_or(0);
+            sys.refresh_cpu_specifics(CpuRefreshKind::new().with_cpu_usage().with_frequency());
+            sys.refresh_memory_specifics(MemoryRefreshKind::everything());
+            sys.refresh_processes_specifics(ProcessRefreshKind::new());
+            components.refresh_list();
+            components.refresh();
+
+            let gb = 1024.0 * 1024.0 * 1024.0;
+
+            //Temperature detection
+            let mut best_temp = 0.0;
+            let mut highest_score = -1;
+            for component in &components {
+                let label = component.label().to_uppercase();
+                let mut current_score = 0;
+
+                if label.contains("TCTL") || label.contains("TDIE") {
+                    current_score = 100;
+                } else if label.contains("PACKAGE") {
+                    current_score = 90;
+                } else if label.contains("CPU") && !label.contains("GPU") {
+                    current_score = 80;
+                } else if label.contains("CORE") {
+                    current_score = 70;
+                }
+
+                if current_score > highest_score {
+                    highest_score = current_score;
+                    best_temp = component.temperature();
+                } else if current_score == highest_score && highest_score != -1 {
+                    best_temp = best_temp.max(component.temperature());
+                }
             }
-            ui.set_cpu_freq(format!("{:.2} GHz", freq as f32 / 1000.0).into());
+
+            if highest_score != -1 {
+                ui.set_cpu_temp(format!("{:.0}°C", best_temp).into());
+            } else {
+                ui.set_cpu_temp("--°C".into());
+            }
+
+            //CPU STATS
+            let mut freq_mhz = sys.global_cpu_info().frequency();
+            if freq_mhz == 0 {
+                freq_mhz = sys.cpus().first().map(|c| c.frequency()).unwrap_or(0);
+            }
+            ui.set_cpu_freq(format!("{:.2} GHz", freq_mhz as f32 / 1000.0).into());
+
             let usage = sys.global_cpu_info().cpu_usage();
             ui.set_cpu_usage(format!("{:.1}%", usage).into());
-            usage_history.remove(0);
-            usage_history.push(usage);
-            let history_vec: Vec<f32> = (0..usage_history.row_count())
-                .map(|i| usage_history.row_data(i).unwrap())
-                .collect();
-            let (line_data, fill_data) = generate_svg_paths(&history_vec);
-            ui.set_usage_line_data(line_data.into());
-            ui.set_usage_fill_data(fill_data.into());
+            cpu_history.remove(0);
+            cpu_history.push(usage);
+
+            let (cpu_line, cpu_fill) =
+                generate_svg_paths(&cpu_history.iter().collect::<Vec<f32>>());
+            ui.set_usage_line_data(cpu_line.into());
+            ui.set_usage_fill_data(cpu_fill.into());
+
+            //MEMORY STATS
+            let total = sys.total_memory() as f32;
+            let used = sys.used_memory() as f32;
+            let available = sys.available_memory() as f32;
+            let free = sys.free_memory() as f32;
+            let cached_val = (available - free).max(0.0);
+
+            ui.set_ram_total(format!("{:.2} GB", total / gb).into());
+            ui.set_ram_free(format!("{:.2} GB", free / gb).into());
+            ui.set_ram_available(format!("{:.2} GB", available / gb).into());
+            ui.set_ram_cached(format!("{:.2} GB", cached_val / gb).into());
+            ui.set_ram_active(format!("{:.2} GB", used / gb).into());
+
+            ui.set_swap_total(format!("{:.2} GB", sys.total_swap() as f32 / gb).into());
+            ui.set_swap_cache(format!("{:.2} GB", sys.used_swap() as f32 / gb).into());
+
+            let mem_usage_pct = (used / total) * 100.0;
+            mem_history.remove(0);
+            mem_history.push(mem_usage_pct);
+
+            let (mem_line, mem_fill) =
+                generate_svg_paths(&mem_history.iter().collect::<Vec<f32>>());
+            ui.set_mem_line_data(mem_line.into());
+            ui.set_mem_fill_data(mem_fill.into());
+
             ui.set_processes(sys.processes().len() as i32);
             let uptime = System::uptime();
             ui.set_uptime(

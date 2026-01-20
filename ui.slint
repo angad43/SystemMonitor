@@ -1,4 +1,5 @@
 import { Button, VerticalBox, ScrollView } from "std-widgets.slint";
+
 component StatLabel inherits Text {
     color: #8b9bb4;
     font-size: 14px;
@@ -17,8 +18,11 @@ export component AppWindow inherits Window {
     background: #030712;
 
     property <string> active_page: "cpu";
+
+    // CPU Properties
     in property <string> processor_name: "Loading...";
     in property <string> cpu_usage: "0%";
+    in property <string> cpu_temp: "--°C";
     in property <string> cpu_freq: "0.00 GHz";
     in property <string> base_speed: "0.00 GHz";
     in property <string> max_speed: "5.0 GHz";
@@ -29,7 +33,19 @@ export component AppWindow inherits Window {
     in property <string> usage_line_data: "";
     in property <string> usage_fill_data: "";
 
+    // Memory Properties
+    in property <string> ram_total: "0.00 GB";
+    in property <string> ram_free: "0.00 GB";
+    in property <string> ram_available: "0.00 GB";
+    in property <string> ram_cached: "0.00 GB";
+    in property <string> ram_active: "0.00 GB";
+    in property <string> swap_total: "0.00 GB";
+    in property <string> swap_cache: "0.00 GB";
+    in property <string> mem_line_data: "";
+    in property <string> mem_fill_data: "";
+
     HorizontalLayout {
+        // Sidebar
         Rectangle {
             width: 120px;
             background: #101828;
@@ -78,10 +94,10 @@ export component AppWindow inherits Window {
         }
 
         Rectangle {
+            // CPU Section
             if (root.active_page == "cpu"): VerticalLayout {
                 padding: 40px;
                 spacing: 25px;
-
                 Text {
                     text: "CPU Performance";
                     color: #ffffff;
@@ -106,14 +122,11 @@ export component AppWindow inherits Window {
                         text: label;
                         color: #4b5563;
                         font-size: 11px;
-                        vertical-alignment: center;
                     }
-
                     Rectangle {
                         x: 35px;
                         width: parent.width - 35px;
                         height: parent.height;
-                        clip: true;
                         Path {
                             width: 100%;
                             height: 100%;
@@ -140,15 +153,31 @@ export component AppWindow inherits Window {
                     spacing: 30px;
                     VerticalLayout {
                         spacing: 20px;
-                        width: 220px;
-                        VerticalLayout {
-                            StatLabel {
-                                text: "Current Speed";
+                        width: 350px;
+                        HorizontalLayout {
+                            spacing: 40px;
+                            VerticalLayout {
+                                StatLabel {
+                                    text: "Current Speed";
+                                }
+
+                                StatValue {
+                                    text: root.cpu_freq;
+                                    font-size: 22px;
+                                }
                             }
 
-                            StatValue {
-                                text: root.cpu_freq;
-                                font-size: 22px;
+                            VerticalLayout {
+                                StatLabel {
+                                    text: "Temperature";
+                                }
+
+                                Text {
+                                    text: root.cpu_temp;
+                                    color: #f87171;
+                                    font-size: 22px;
+                                    font-weight: 600;
+                                }
                             }
                         }
 
@@ -226,15 +255,161 @@ export component AppWindow inherits Window {
                                 text: root.base_speed;
                             }
                         }
+                    }
+                }
+            }
+
+            // Memory Section
+            if (root.active_page == "memory"): VerticalLayout {
+                padding: 40px;
+                spacing: 25px;
+                Text {
+                    text: "Memory Performance";
+                    color: #ffffff;
+                    font-size: 28px;
+                    font-weight: 700;
+                }
+
+                Rectangle {
+                    height: 300px;
+                    background: #111827;
+                    border-radius: 8px;
+                    clip: true;
+                    for label[i] in ["100", "75", "50", "25", "0"]: Text {
+                        x: 10px;
+                        y: i == 0 ? 5px : (i == 4 ? parent.height - 27px : (parent.height / 4) * i - 10px);
+                        text: label;
+                        color: #4b5563;
+                        font-size: 11px;
+                    }
+                    Rectangle {
+                        x: 35px;
+                        width: parent.width - 35px;
+                        height: parent.height;
+                        Path {
+                            width: 100%;
+                            height: 100%;
+                            viewbox-width: 765;
+                            viewbox-height: 300;
+                            fill: @linear-gradient(180deg, #10b98144 0%, #10b98100 100%);
+                            commands: root.mem_fill_data;
+                        }
+
+                        Path {
+                            width: 100%;
+                            height: 100%;
+                            viewbox-width: 765;
+                            viewbox-height: 300;
+                            stroke: #10b981;
+                            stroke-width: 2px;
+                            fill: transparent;
+                            commands: root.mem_line_data;
+                        }
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 40px;
+                    VerticalLayout {
+                        spacing: 12px;
+                        width: 300px;
+                        Text {
+                            text: "Ram";
+                            color: #7aa2f7;
+                            font-size: 20px;
+                            font-weight: 700;
+                        }
 
                         HorizontalLayout {
                             StatLabel {
-                                text: "Max Speed";
+                                text: "Total";
                                 width: 120px;
                             }
 
                             StatValue {
-                                text: root.max_speed;
+                                text: root.ram_total;
+                            }
+                        }
+
+                        HorizontalLayout {
+                            StatLabel {
+                                text: "Used";
+                                width: 120px;
+                            }
+
+                            StatValue {
+                                text: root.ram_active;
+                            }
+                        }
+
+                        HorizontalLayout {
+                            StatLabel {
+                                text: "Free";
+                                width: 120px;
+                            }
+
+                            StatValue {
+                                text: root.ram_free;
+                            }
+                        }
+
+                        HorizontalLayout {
+                            StatLabel {
+                                text: "Available";
+                                width: 120px;
+                            }
+
+                            StatValue {
+                                text: root.ram_available;
+                            }
+                        }
+
+                        HorizontalLayout {
+                            StatLabel {
+                                text: "Cached";
+                                width: 120px;
+                            }
+
+                            StatValue {
+                                text: root.ram_cached;
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        width: 1px;
+                        background: #1e2939;
+                    }
+
+                    VerticalLayout {
+                        spacing: 12px;
+                        alignment: start;
+                        Text {
+                            text: "Swap";
+                            color: #7aa2f7;
+                            font-size: 20px;
+                            font-weight: 700;
+                        }
+
+                        HorizontalLayout {
+                            StatLabel {
+                                text: "Total";
+                                width: 120px;
+                            }
+
+                            StatValue {
+                                text: root.swap_total;
+                            }
+                        }
+
+                        HorizontalLayout {
+                            StatLabel {
+                                text: "Used";
+                                width: 120px;
+                            }
+
+                            StatValue {
+                                text: root.swap_cache;
                             }
                         }
                     }

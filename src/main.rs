@@ -1,5 +1,6 @@
 slint::include_modules!();
 
+use nvml_wrapper::Nvml;
 use slint::{Model, VecModel};
 use std::rc::Rc;
 use sysinfo::{Components, CpuRefreshKind, MemoryRefreshKind, ProcessRefreshKind, System};
@@ -30,6 +31,8 @@ fn main() -> Result<(), slint::PlatformError> {
 
     let mut sys = System::new_all();
     let mut components = Components::new_with_refreshed_list();
+    // Initialize NVML for NVIDIA GPUs
+    let nvml = Nvml::init().ok();
 
     sys.refresh_cpu();
     std::thread::sleep(std::time::Duration::from_millis(200));
@@ -37,6 +40,7 @@ fn main() -> Result<(), slint::PlatformError> {
 
     let cpu_history = Rc::new(VecModel::<f32>::from(vec![0.0; 100]));
     let mem_history = Rc::new(VecModel::<f32>::from(vec![0.0; 100]));
+    let gpu_history = Rc::new(VecModel::<f32>::from(vec![0.0; 100]));
 
     if let Some(cpu) = sys.cpus().first() {
         ui.set_processor_name(cpu.brand().trim().into());
@@ -64,7 +68,7 @@ fn main() -> Result<(), slint::PlatformError> {
 
             let gb = 1024.0 * 1024.0 * 1024.0;
 
-            //Temperature detection
+            // --- CPU Temperature Detection ---
             let mut best_temp = 0.0;
             let mut highest_score = -1;
             for component in &components {
@@ -95,7 +99,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 ui.set_cpu_temp("--°C".into());
             }
 
-            //CPU STATS
+            // --- CPU Stats ---
             let mut freq_mhz = sys.global_cpu_info().frequency();
             if freq_mhz == 0 {
                 freq_mhz = sys.cpus().first().map(|c| c.frequency()).unwrap_or(0);
@@ -112,7 +116,58 @@ fn main() -> Result<(), slint::PlatformError> {
             ui.set_usage_line_data(cpu_line.into());
             ui.set_usage_fill_data(cpu_fill.into());
 
-            //MEMORY STATS
+            // --- GPU Stats ---
+            let mut g_usage = 0.0;
+            let mut g_temp = 0.0;
+            let mut g_name = String::from("Integrated Graphics");
+            if let Some(ref n) = nvml {
+                if let Ok(dev) = n.device_by_index(0) {
+                    g_name = dev.name().unwrap_or(g_name);
+                    g_temp = dev
+                        .temperature(nvml_wrapper::enum_wrappers::device::TemperatureSensor::Gpu)
+                        .unwrap_or(0) as f32;
+                    g_usage = dev.utilization_rates().map(|u| u.gpu).unwrap_or(0) as f32;
+                    ui.set_gpu_wattage(
+                        format!("{:.2} W", dev.power_usage().unwrap_or(0) as f32 / 1000.0).into(),
+                    );
+                    ui.set_gpu_freq(
+                        format!(
+                            "{} MHz",
+                            dev.clock_info(nvml_wrapper::enum_wrappers::device::Clock::Graphics)
+                                .unwrap_or(0)
+                        )
+                        .into(),
+                    );
+
+                    let m = dev.memory_info().unwrap();
+                    ui.set_gpu_vram_total(format!("{:.1} GB", m.total as f32 / gb).into());
+                    ui.set_gpu_vram_used(
+                        format!("{:.0} MB", m.used as f32 / (1024.0 * 1024.0)).into(),
+                    );
+                }
+            } else {
+                // Priority 2: AMD/Intel Fallback via scored components
+                for comp in &components {
+                    let label = comp.label().to_uppercase();
+                    if label.contains("GPU") || label.contains("AMDGPU") || label.contains("INTEL")
+                    {
+                        g_temp = comp.temperature();
+                        g_name = label;
+                    }
+                }
+            }
+
+            ui.set_gpu_name(g_name.into());
+            ui.set_gpu_temp(format!("{:.0}°C", g_temp).into());
+            ui.set_gpu_usage(format!("{:.1}%", g_usage).into());
+
+            gpu_history.remove(0);
+            gpu_history.push(g_usage);
+            let (g_line, g_fill) = generate_svg_paths(&gpu_history.iter().collect::<Vec<f32>>());
+            ui.set_gpu_line_data(g_line.into());
+            ui.set_gpu_fill_data(g_fill.into());
+
+            // --- Memory Stats ---
             let total = sys.total_memory() as f32;
             let used = sys.used_memory() as f32;
             let available = sys.available_memory() as f32;
@@ -137,6 +192,7 @@ fn main() -> Result<(), slint::PlatformError> {
             ui.set_mem_line_data(mem_line.into());
             ui.set_mem_fill_data(mem_fill.into());
 
+            // --- System Stats ---
             ui.set_processes(sys.processes().len() as i32);
             let uptime = System::uptime();
             ui.set_uptime(

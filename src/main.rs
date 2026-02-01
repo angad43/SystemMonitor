@@ -7,6 +7,7 @@ use std::path::Path;
 use std::rc::Rc;
 use sysinfo::{Components, CpuRefreshKind, MemoryRefreshKind, System};
 
+// --- Helper: Format Graph Data ---
 fn generate_svg_paths(history: &[f32]) -> (String, String) {
     if history.len() < 2 {
         return (String::new(), String::new());
@@ -26,6 +27,7 @@ fn generate_svg_paths(history: &[f32]) -> (String, String) {
     (line, fill)
 }
 
+// --- Helpers: Safe File Reading ---
 fn read_file_u64(path: &Path) -> Option<u64> {
     fs::read_to_string(path).ok()?.trim().parse().ok()
 }
@@ -45,8 +47,10 @@ fn main() -> Result<(), slint::PlatformError> {
     let mut components = Components::new_with_refreshed_list();
     let nvml = Nvml::init().ok();
 
+    // --- 1. DISCOVERY PHASE ---
     let mut gpu_candidates: Vec<(String, u8, String)> = Vec::new();
 
+    // A. NVIDIA (NVML)
     if let Some(ref n) = nvml {
         if let Ok(count) = n.device_count() {
             for i in 0..count {
@@ -58,13 +62,13 @@ fn main() -> Result<(), slint::PlatformError> {
         }
     }
 
+    // B. AMD/Intel (SysFS)
     if let Ok(entries) = fs::read_dir("/sys/class/drm") {
         for entry in entries.flatten() {
             let path = entry.path();
             let fname = path.file_name().unwrap_or_default().to_string_lossy();
             if fname.starts_with("card") && !fname.contains("-") {
-                let vendor_path = path.join("device/vendor");
-                let vendor_hex = read_file_str(&vendor_path);
+                let vendor_hex = read_file_str(&path.join("device/vendor"));
 
                 // Skip NVIDIA (handled by NVML)
                 if !vendor_hex.contains("0x10de") {
@@ -73,7 +77,7 @@ fn main() -> Result<(), slint::PlatformError> {
                         if vendor_hex.contains("0x1002") {
                             name = "AMD Radeon Graphics".into();
                         } else if vendor_hex.contains("0x8086") {
-                            name = "Intel Integrated Graphics".into();
+                            name = "Intel HD/UHD Graphics".into();
                         } else {
                             name = format!("GPU ({})", fname);
                         }
@@ -84,6 +88,7 @@ fn main() -> Result<(), slint::PlatformError> {
         }
     }
 
+    // --- 2. SETUP MODELS ---
     let gpu_models = Rc::new(VecModel::<GpuData>::default());
     let mut gpu_histories: Vec<Vec<f32>> = Vec::new();
 
@@ -121,12 +126,14 @@ fn main() -> Result<(), slint::PlatformError> {
             sys.refresh_memory_specifics(MemoryRefreshKind::new().with_ram());
             components.refresh();
 
+            // CPU Stats
             if let Some(cpu) = sys.cpus().first() {
                 ui.set_cpu_freq(format!("{:.2} GHz", cpu.frequency() as f32 / 1000.0).into());
             }
             let cpu_usage = sys.global_cpu_info().cpu_usage();
             ui.set_cpu_usage(format!("{:.1}%", cpu_usage).into());
 
+            // CPU Temp
             let mut max_temp: f32 = 0.0;
             for component in &components {
                 let label = component.label().to_uppercase();
@@ -141,21 +148,15 @@ fn main() -> Result<(), slint::PlatformError> {
                     }
                 }
             }
-            if max_temp == 0.0 && !components.is_empty() {
-                for component in &components {
-                    let t = component.temperature();
-                    if t > max_temp {
-                        max_temp = t;
-                    }
-                }
-            }
             ui.set_cpu_temp(format!("{:.0}°C", max_temp).into());
+
             cpu_history.remove(0);
             cpu_history.push(cpu_usage);
             let (c_l, c_f) = generate_svg_paths(&cpu_history.iter().collect::<Vec<f32>>());
             ui.set_usage_line_data(c_l.into());
             ui.set_usage_fill_data(c_f.into());
 
+            // Memory
             let total = sys.total_memory() as f32;
             let used = sys.used_memory() as f32;
             ui.set_ram_total(format!("{:.2} GB", total / gb).into());
@@ -169,8 +170,6 @@ fn main() -> Result<(), slint::PlatformError> {
                 .into(),
             );
             ui.set_ram_free(format!("{:.2} GB", sys.free_memory() as f32 / gb).into());
-            ui.set_swap_total(format!("{:.2} GB", sys.total_swap() as f32 / gb).into());
-            ui.set_swap_cache(format!("{:.2} GB", sys.used_swap() as f32 / gb).into());
 
             let m_pct = (used / total) * 100.0;
             mem_history.remove(0);
@@ -178,6 +177,8 @@ fn main() -> Result<(), slint::PlatformError> {
             let (m_l, m_f) = generate_svg_paths(&mem_history.iter().collect::<Vec<f32>>());
             ui.set_mem_line_data(m_l.into());
             ui.set_mem_fill_data(m_f.into());
+
+            // --- GPU UPDATE LOOP ---
             for (idx, (_, g_type, identifier)) in gpu_candidates.iter().enumerate() {
                 if idx >= gpu_models.row_count() {
                     break;
@@ -186,6 +187,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 let mut util = 0.0;
 
                 if *g_type == 0 {
+                    // NVIDIA (NVML)
                     if let Some(ref n) = nvml {
                         if let Ok(dev) = n.device_by_index(identifier.parse().unwrap_or(0)) {
                             if let Ok(rates) = dev.utilization_rates() {
@@ -215,7 +217,6 @@ fn main() -> Result<(), slint::PlatformError> {
                                 .unwrap_or(0)
                             )
                             .into();
-
                             if let Ok(m) = dev.memory_info() {
                                 g_data.vram_total = format!("{:.1} GB", m.total as f32 / gb).into();
                                 g_data.vram_used = format!("{:.0} MB", m.used as f32 / mb).into();
@@ -224,47 +225,98 @@ fn main() -> Result<(), slint::PlatformError> {
                     }
                 } else {
                     let path = Path::new(identifier);
+                    let card_name = path.file_name().unwrap_or_default().to_string_lossy();
 
+                    // 1. UTILIZATION
                     if let Some(busy) = read_file_u64(&path.join("device/gpu_busy_percent")) {
                         util = busy as f32;
+                    } else {
+                        // Intel Freq Ratio Fallback
+                        let gt_max = read_file_u64(
+                            &path.join(format!("device/drm/{}/gt_max_freq_mhz", card_name)),
+                        )
+                        .unwrap_or(1);
+                        let gt_cur = read_file_u64(
+                            &path.join(format!("device/drm/{}/gt_cur_freq_mhz", card_name)),
+                        )
+                        .unwrap_or(0);
+                        if gt_cur > 0 {
+                            util = (gt_cur as f32 / gt_max as f32) * 100.0;
+                        }
                     }
 
+                    // 2. FREQUENCY (Improved AMD + Intel Support)
+                    let mut found_freq = false;
+
+                    // Try Intel path first
+                    if let Some(mhz) = read_file_u64(
+                        &path.join(format!("device/drm/{}/gt_cur_freq_mhz", card_name)),
+                    ) {
+                        g_data.freq = format!("{} MHz", mhz).into();
+                        found_freq = true;
+                    }
+
+                    // Try AMD PowerPlay path (Format: "0: 300Mhz *")
+                    if !found_freq {
+                        if let Ok(content) = fs::read_to_string(path.join("device/pp_dpm_sclk")) {
+                            for line in content.lines() {
+                                if line.contains('*') {
+                                    // Extracts "1200" from "1: 1200Mhz *"
+                                    let freq = line
+                                        .split(':')
+                                        .nth(1)
+                                        .unwrap_or("")
+                                        .split('M')
+                                        .next()
+                                        .unwrap_or("")
+                                        .trim();
+                                    g_data.freq = format!("{} MHz", freq).into();
+                                    found_freq = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    // Final Fallback: Check hwmon for freq1_input (common on newer AMD/Intel)
+                    if !found_freq {
+                        let hwmon_dir = path.join("device/hwmon");
+                        if let Ok(entries) = fs::read_dir(&hwmon_dir) {
+                            for entry in entries.flatten() {
+                                if let Some(hertz) =
+                                    read_file_u64(&entry.path().join("freq1_input"))
+                                {
+                                    g_data.freq = format!("{} MHz", hertz / 1_000_000).into(); // hertz to MHz
+                                    found_freq = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    if !found_freq {
+                        g_data.freq = "N/A".into();
+                    }
+                    // 3. VRAM
                     let vram_tot =
                         read_file_u64(&path.join("device/mem_info_vram_total")).unwrap_or(0);
                     let vram_used =
                         read_file_u64(&path.join("device/mem_info_vram_used")).unwrap_or(0);
-                    let gtt_tot =
-                        read_file_u64(&path.join("device/mem_info_gtt_total")).unwrap_or(0);
-                    let gtt_used =
-                        read_file_u64(&path.join("device/mem_info_gtt_used")).unwrap_or(0);
-
-                    let combined_total = (vram_tot + gtt_tot) as f32;
-                    let combined_used = (vram_used + gtt_used) as f32;
-
-                    if combined_total > 0.0 {
-                        g_data.vram_total = format!("{:.1} GB", combined_total / gb).into();
-                        g_data.vram_used = format!("{:.0} MB", combined_used / mb).into();
+                    if vram_tot > 0 {
+                        g_data.vram_total = format!("{:.1} GB", vram_tot as f32 / gb).into();
+                        g_data.vram_used = format!("{:.0} MB", vram_used as f32 / mb).into();
                     } else {
-                        g_data.vram_total = "N/A".into();
+                        g_data.vram_total = "Shared".into();
+                        g_data.vram_used = "N/A".into();
                     }
 
+                    // 4. TEMP
                     let hwmon_dir = path.join("device/hwmon");
                     if let Ok(entries) = fs::read_dir(&hwmon_dir) {
                         for entry in entries.flatten() {
-                            let h_path = entry.path();
-                            if let Some(t) = read_file_u64(&h_path.join("temp1_input")) {
+                            if let Some(t) = read_file_u64(&entry.path().join("temp1_input")) {
                                 g_data.temp = format!("{:.0}°C", t as f32 / 1000.0).into();
-                            }
-                            if let Ok(files) = fs::read_dir(&h_path) {
-                                for f in files.flatten() {
-                                    let fname = f.file_name().to_string_lossy().to_string();
-                                    if fname.starts_with("freq") && fname.ends_with("_input") {
-                                        if let Some(hz) = read_file_u64(&f.path()) {
-                                            g_data.freq = format!("{} MHz", hz / 1_000_000).into();
-                                            break;
-                                        }
-                                    }
-                                }
+                                break;
                             }
                         }
                     }

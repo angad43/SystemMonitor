@@ -187,7 +187,7 @@ fn main() -> Result<(), slint::PlatformError> {
 
                 if *g_type == 0 {
                     if let Some(ref n) = nvml {
-                        if let Ok(dev) = n.device_by_index(identifier.parse().unwrap_or(0)) {.
+                        if let Ok(dev) = n.device_by_index(identifier.parse().unwrap_or(0)) {
                             if let Ok(rates) = dev.utilization_rates() {
                                 let gpu_load = rates.gpu as f32;
                                 let mem_load = rates.memory as f32;

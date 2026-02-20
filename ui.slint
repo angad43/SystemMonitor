@@ -23,20 +23,77 @@ component StatValue inherits Text {
     font-weight: 600;
 }
 
+// Reusable graph component with Y-axis labels
+component GraphArea inherits Rectangle {
+    in property <string> line_data: "";
+    in property <string> fill_data: "";
+    in property <color> line_color: #3b82f6;
+    in property <color> fill_color_start: #3b82f644;
+    in property <color> fill_color_end: #3b82f600;
+
+    height: 300px;
+    background: #111827;
+    border-radius: 8px;
+    clip: true;
+
+    // Y-axis labels
+    for label[i] in ["100", "75", "50", "25", "0"]: Text {
+        x: 6px;
+        y: i == 0 ? 5px : (i == 4 ? parent.height - 22px : (parent.height / 4) * i - 10px);
+        text: label;
+        color: #4b5563;
+        font-size: 11px;
+    }
+
+    // Horizontal guide lines
+    for dummy[i] in ["", "", "", ""]: Rectangle {
+        x: 35px;
+        y: (parent.height / 4) * (i + 1);
+        width: parent.width - 45px;
+        height: 1px;
+        background: #1e2939;
+    }
+
+    // Graph paths
+    Rectangle {
+        x: 35px;
+        width: parent.width - 45px;
+        height: parent.height;
+
+        Path {
+            width: 100%;
+            height: 100%;
+            viewbox-width: 765;
+            viewbox-height: 300;
+            fill: @linear-gradient(180deg, root.fill_color_start 0%, root.fill_color_end 100%);
+            commands: root.fill_data;
+        }
+
+        Path {
+            width: 100%;
+            height: 100%;
+            viewbox-width: 765;
+            viewbox-height: 300;
+            stroke: root.line_color;
+            stroke-width: 2px;
+            fill: transparent;
+            commands: root.line_data;
+        }
+    }
+}
+
 export component AppWindow inherits Window {
     width: 1000px;
     height: 800px;
     title: "System Monitor Pro";
     background: #030712;
 
-    // Navigation State
     property <string> active_page: "cpu";
     property <int> active_gpu_index: 0;
 
-    // --- Data Models ---
     in property <[GpuData]> gpus: [];
 
-    // --- CPU Properties ---
+    // CPU
     in property <string> processor_name: "Loading...";
     in property <string> cpu_usage: "0%";
     in property <string> cpu_temp: "--°C";
@@ -49,23 +106,23 @@ export component AppWindow inherits Window {
     in property <string> usage_line_data: "";
     in property <string> usage_fill_data: "";
 
-    // --- Memory Properties ---
+    // Memory
     in property <string> ram_total: "0.00 GB";
     in property <string> ram_free: "0.00 GB";
     in property <string> ram_available: "0.00 GB";
     in property <string> ram_cached: "0.00 GB";
     in property <string> ram_active: "0.00 GB";
     in property <string> swap_total: "0.00 GB";
-    in property <string> swap_cache: "0.00 GB";
+    in property <string> swap_used: "0.00 GB";
+    in property <string> swap_free: "0.00 GB";
     in property <string> mem_line_data: "";
     in property <string> mem_fill_data: "";
 
     HorizontalLayout {
-        // --- Sidebar Navigation ---
+        // Sidebar
         Rectangle {
             width: 150px;
             background: #101828;
-            // FIXED: Slint doesn't support 'border-right' shorthand
             border-width: 1px;
             border-color: #1e2939;
 
@@ -74,7 +131,6 @@ export component AppWindow inherits Window {
                 spacing: 12px;
                 alignment: start;
 
-                // CPU Button
                 Rectangle {
                     height: 50px;
                     border-radius: 8px;
@@ -93,7 +149,6 @@ export component AppWindow inherits Window {
                     }
                 }
 
-                // Memory Button
                 Rectangle {
                     height: 50px;
                     border-radius: 8px;
@@ -112,7 +167,6 @@ export component AppWindow inherits Window {
                     }
                 }
 
-                // Dynamic GPU Buttons
                 for gpu[idx] in root.gpus: Rectangle {
                     height: 50px;
                     border-radius: 8px;
@@ -134,12 +188,14 @@ export component AppWindow inherits Window {
             }
         }
 
-        // --- Main Content Area ---
+        // Main Content
         Rectangle {
+
             // --- CPU PAGE ---
             if (root.active_page == "cpu"): VerticalLayout {
                 padding: 40px;
                 spacing: 25px;
+
                 Text {
                     text: "CPU Performance";
                     color: #ffffff;
@@ -153,49 +209,21 @@ export component AppWindow inherits Window {
                     font-size: 18px;
                 }
 
-                Rectangle {
-                    height: 300px;
-                    background: #111827;
-                    border-radius: 8px;
-                    clip: true;
-                    for label[i] in ["100", "75", "50", "25", "0"]: Text {
-                        x: 10px;
-                        y: i == 0 ? 5px : (i == 4 ? parent.height - 25px : (parent.height / 4) * i - 10px);
-                        text: label;
-                        color: #4b5563;
-                        font-size: 11px;
-                    }
-                    Rectangle {
-                        x: 35px;
-                        width: parent.width - 45px;
-                        height: parent.height;
-                        Path {
-                            width: 100%;
-                            height: 100%;
-                            viewbox-width: 765;
-                            viewbox-height: 300;
-                            fill: @linear-gradient(180deg, #3b82f644 0%, #3b82f600 100%);
-                            commands: root.usage_fill_data;
-                        }
-
-                        Path {
-                            width: 100%;
-                            height: 100%;
-                            viewbox-width: 765;
-                            viewbox-height: 300;
-                            stroke: #3b82f6;
-                            stroke-width: 2px;
-                            fill: transparent;
-                            commands: root.usage_line_data;
-                        }
-                    }
+                GraphArea {
+                    line_data: root.usage_line_data;
+                    fill_data: root.usage_fill_data;
+                    line_color: #3b82f6;
+                    fill_color_start: #3b82f644;
+                    fill_color_end: #3b82f600;
                 }
 
                 HorizontalLayout {
                     spacing: 30px;
+
                     VerticalLayout {
                         spacing: 20px;
                         width: 350px;
+
                         HorizontalLayout {
                             spacing: 40px;
                             VerticalLayout {
@@ -254,6 +282,7 @@ export component AppWindow inherits Window {
                     VerticalLayout {
                         spacing: 12px;
                         alignment: center;
+
                         HorizontalLayout {
                             StatLabel {
                                 text: "Usage";
@@ -305,6 +334,7 @@ export component AppWindow inherits Window {
             if (root.active_page == "memory"): VerticalLayout {
                 padding: 40px;
                 spacing: 25px;
+
                 Text {
                     text: "Memory Performance";
                     color: #ffffff;
@@ -312,42 +342,21 @@ export component AppWindow inherits Window {
                     font-weight: 700;
                 }
 
-                Rectangle {
-                    height: 300px;
-                    background: #111827;
-                    border-radius: 8px;
-                    clip: true;
-                    Rectangle {
-                        x: 35px;
-                        width: parent.width - 45px;
-                        height: parent.height;
-                        Path {
-                            width: 100%;
-                            height: 100%;
-                            viewbox-width: 765;
-                            viewbox-height: 300;
-                            fill: @linear-gradient(180deg, #10b98144 0%, #10b98100 100%);
-                            commands: root.mem_fill_data;
-                        }
-
-                        Path {
-                            width: 100%;
-                            height: 100%;
-                            viewbox-width: 765;
-                            viewbox-height: 300;
-                            stroke: #10b981;
-                            stroke-width: 2px;
-                            fill: transparent;
-                            commands: root.mem_line_data;
-                        }
-                    }
+                GraphArea {
+                    line_data: root.mem_line_data;
+                    fill_data: root.mem_fill_data;
+                    line_color: #10b981;
+                    fill_color_start: #10b98144;
+                    fill_color_end: #10b98100;
                 }
 
                 HorizontalLayout {
                     spacing: 40px;
+
                     VerticalLayout {
                         spacing: 12px;
                         width: 300px;
+
                         Text {
                             text: "RAM";
                             color: #7aa2f7;
@@ -398,6 +407,17 @@ export component AppWindow inherits Window {
                                 text: root.ram_available;
                             }
                         }
+
+                        HorizontalLayout {
+                            StatLabel {
+                                text: "Cached";
+                                width: 120px;
+                            }
+
+                            StatValue {
+                                text: root.ram_cached;
+                            }
+                        }
                     }
 
                     Rectangle {
@@ -408,6 +428,7 @@ export component AppWindow inherits Window {
                     VerticalLayout {
                         spacing: 12px;
                         alignment: start;
+
                         Text {
                             text: "Swap";
                             color: #7aa2f7;
@@ -433,7 +454,18 @@ export component AppWindow inherits Window {
                             }
 
                             StatValue {
-                                text: root.swap_cache;
+                                text: root.swap_used;
+                            }
+                        }
+
+                        HorizontalLayout {
+                            StatLabel {
+                                text: "Free";
+                                width: 120px;
+                            }
+
+                            StatValue {
+                                text: root.swap_free;
                             }
                         }
                     }
@@ -444,6 +476,7 @@ export component AppWindow inherits Window {
             if (root.active_page == "gpu" && root.gpus.length > 0): VerticalLayout {
                 padding: 40px;
                 spacing: 25px;
+
                 Text {
                     text: "GPU Performance";
                     color: #ffffff;
@@ -457,42 +490,21 @@ export component AppWindow inherits Window {
                     font-size: 18px;
                 }
 
-                Rectangle {
-                    height: 300px;
-                    background: #111827;
-                    border-radius: 8px;
-                    clip: true;
-                    Rectangle {
-                        x: 35px;
-                        width: parent.width - 45px;
-                        height: parent.height;
-                        Path {
-                            width: 100%;
-                            height: 100%;
-                            viewbox-width: 765;
-                            viewbox-height: 300;
-                            fill: @linear-gradient(180deg, #f59e0b44 0%, #f59e0b00 100%);
-                            commands: root.gpus[root.active_gpu_index].fill_data;
-                        }
-
-                        Path {
-                            width: 100%;
-                            height: 100%;
-                            viewbox-width: 765;
-                            viewbox-height: 300;
-                            stroke: #f59e0b;
-                            stroke-width: 2px;
-                            fill: transparent;
-                            commands: root.gpus[root.active_gpu_index].line_data;
-                        }
-                    }
+                GraphArea {
+                    line_data: root.gpus[root.active_gpu_index].line_data;
+                    fill_data: root.gpus[root.active_gpu_index].fill_data;
+                    line_color: #f59e0b;
+                    fill_color_start: #f59e0b44;
+                    fill_color_end: #f59e0b00;
                 }
 
                 HorizontalLayout {
                     spacing: 30px;
+
                     VerticalLayout {
                         spacing: 20px;
                         width: 350px;
+
                         HorizontalLayout {
                             spacing: 40px;
                             VerticalLayout {
@@ -519,6 +531,33 @@ export component AppWindow inherits Window {
                                 }
                             }
                         }
+
+                        HorizontalLayout {
+                            spacing: 40px;
+                            VerticalLayout {
+                                StatLabel {
+                                    text: "VRAM Total";
+                                }
+
+                                StatValue {
+                                    text: root.gpus[root.active_gpu_index].vram_total;
+                                    font-size: 18px;
+                                }
+                            }
+
+                            VerticalLayout {
+                                StatLabel {
+                                    text: "Power Draw";
+                                }
+
+                                Text {
+                                    text: root.gpus[root.active_gpu_index].wattage;
+                                    color: #a78bfa;
+                                    font-size: 18px;
+                                    font-weight: 600;
+                                }
+                            }
+                        }
                     }
 
                     Rectangle {
@@ -529,10 +568,11 @@ export component AppWindow inherits Window {
                     VerticalLayout {
                         spacing: 12px;
                         alignment: center;
+
                         HorizontalLayout {
                             StatLabel {
                                 text: "Utilization";
-                                width: 120px;
+                                width: 130px;
                             }
 
                             StatValue {
@@ -543,7 +583,7 @@ export component AppWindow inherits Window {
                         HorizontalLayout {
                             StatLabel {
                                 text: "VRAM Used";
-                                width: 120px;
+                                width: 130px;
                             }
 
                             StatValue {
